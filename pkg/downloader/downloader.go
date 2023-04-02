@@ -19,30 +19,23 @@ import (
 	"github.com/stoewer/go-strcase"
 )
 
+// Downloader is the main struct
 type Downloader struct {
-	Filename       string
-	FilePath       string
-	RootPath       string
-	Header         map[string]string
-	CopyBufferSize int
+	filename       string
+	filePath       string
+	rootPath       string
+	header         map[string]string
+	copyBufferSize int
 	client         *http.Client
-	URL            string
+	url            string
 	//file size in bytes
-	Size int64
-	//downloaded size in bytes
-	DownloadedSize int64
-	//download speed in bytes per second
-	Bandwidth int64
-	//remaining time
-	Remaining time.Duration
+	size int64
 	//is resumable
-	Resumable bool
+	resumable bool
 	//is paused
 	paused bool
 	//is resumed
 	resume bool
-	//number of segments
-	Segments int
 	// concurrent downloads
 	concurrency int
 	// use to pause the download gracefully
@@ -50,22 +43,8 @@ type Downloader struct {
 	cancel       context.CancelFunc
 	bar          *progressbar.ProgressBar
 	Hook         Hook
-	ShowProgress bool
-}
-
-type Result struct {
-	Size     int64
-	URL      string
-	Path     string
-	Filename string
-}
-
-type Config struct {
-	Url            string
-	ShowProgress   bool
-	Concurrency    int
-	RootPath       string
-	CopyBufferSize int
+	showProgress bool
+	debug        bool
 }
 
 // NewDownloader creates a new Downloader
@@ -82,43 +61,58 @@ func NewDownloader(config *Config) *Downloader {
 	if config.CopyBufferSize == 0 {
 		config.CopyBufferSize = 1024
 	}
+	if config.RetryMax == 0 {
+		config.RetryMax = 10
+	}
+
+	if config.RetryWaitMax == 0 {
+		config.RetryWaitMax = 10 * time.Second
+	}
+
+	if config.RetryWaitMin == 0 {
+		config.RetryWaitMin = 1 * time.Second
+	}
 
 	retryablehttpClient := retryablehttp.NewClient()
-	retryablehttpClient.RetryMax = 10
-	retryablehttpClient.RetryWaitMax = 10 * time.Second
-	retryablehttpClient.RetryWaitMin = 1 * time.Second
-	retryablehttpClient.Logger = nil
+	retryablehttpClient.RetryMax = config.RetryMax
+	retryablehttpClient.RetryWaitMax = config.RetryWaitMax
+	retryablehttpClient.RetryWaitMin = config.RetryWaitMin
+	if config.Debug {
+		retryablehttpClient.Logger = log.New(os.Stdout, "", log.LstdFlags)
+	} else {
+		retryablehttpClient.Logger = nil
+	}
 
 	d := &Downloader{
 		client:         retryablehttpClient.StandardClient(),
-		URL:            config.Url,
+		url:            config.Url,
 		concurrency:    config.Concurrency,
-		RootPath:       config.RootPath,
-		CopyBufferSize: config.CopyBufferSize, // 1kb
-		Resumable:      false,
-		ShowProgress:   config.ShowProgress,
+		rootPath:       config.RootPath,
+		copyBufferSize: config.CopyBufferSize, // 1kb
+		resumable:      false,
+		showProgress:   config.ShowProgress,
 	}
 
 	return d
 }
 
 func (d *Downloader) SetBaseFolder(folderName string) {
-	d.RootPath = fmt.Sprintf("%s/%s", d.RootPath, folderName)
+	d.rootPath = fmt.Sprintf("%s/%s", d.rootPath, folderName)
 }
 
 func (d *Downloader) checkPartExist() bool {
-	_, err := os.Stat(fmt.Sprintf("%s/%s.part0", d.RootPath, d.Filename))
+	_, err := os.Stat(fmt.Sprintf("%s/%s.part0", d.rootPath, d.filename))
 	return err == nil
 }
 func (d *Downloader) checkFileExist() bool {
-	_, err := os.Stat(fmt.Sprintf("%s/%s", d.RootPath, d.Filename))
+	_, err := os.Stat(fmt.Sprintf("%s/%s", d.rootPath, d.filePath))
 	return err == nil
 }
 
 func (d *Downloader) ensureRootPath() {
-	_, err := os.Stat(fmt.Sprintf("%s/%s", d.RootPath, d.Filename))
+	_, err := os.Stat(fmt.Sprintf("%s/%s", d.rootPath, d.filename))
 	if os.IsNotExist(err) {
-		os.MkdirAll(d.RootPath, os.ModePerm)
+		os.MkdirAll(d.rootPath, os.ModePerm)
 	}
 }
 
@@ -135,19 +129,22 @@ func (d *Downloader) fetchMetadata() error {
 	defer resp.Body.Close()
 
 	// Check status code
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
+	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 
 	if resp.StatusCode != http.StatusPartialContent && resp.Header.Get("Accept-Ranges") == "bytes" {
-		d.Resumable = true
+		d.resumable = true
 	}
-	d.Size = resp.ContentLength
+
+	d.size = resp.ContentLength
+
 	if err := d.detectFilename(resp); err != nil {
 		return err
 	}
 	return nil
 }
+
 func (d *Downloader) Resume() {
 	d.resume = true
 }
@@ -161,8 +158,8 @@ func (d *Downloader) detectFilename(response *http.Response) error {
 	path := response.Request.URL.Path
 	tokens := strings.Split(path, "/")
 	if len(tokens) > 0 {
-		d.Filename = strcase.SnakeCase(tokens[len(tokens)-1])
-		d.FilePath = d.FilePath + "/" + d.Filename
+		d.filename = strcase.SnakeCase(tokens[len(tokens)-1])
+		d.filePath = d.filePath + "/" + d.filename
 		return nil
 	}
 	return nil
@@ -180,30 +177,33 @@ func (d *Downloader) Download() error {
 		return err
 	}
 	// if the file already exists, we rename it
-	log.Println("filename", d.Filename)
+	if d.debug {
+		log.Println("filename", d.filename)
+	}
 
 	if d.checkFileExist() {
 		return fmt.Errorf("file already exists")
 	}
 
-	if d.Resumable {
+	if d.resumable {
 		return d.multiDownload()
 	}
+
 	return d.simpleDownload()
 }
 
 func (d *Downloader) makeRequest(method string) (*http.Request, error) {
 
-	if d.URL == "" {
+	if d.url == "" {
 		return nil, errors.New("url is empty")
 	}
-	req, err := http.NewRequest(method, d.URL, nil)
+	req, err := http.NewRequest(method, d.url, nil)
 
 	if err != nil {
 		return nil, err
 	}
 
-	for k, v := range d.Header {
+	for k, v := range d.header {
 		req.Header.Add(k, v)
 	}
 	return req, nil
@@ -229,14 +229,14 @@ func (d *Downloader) do(req *http.Request) (*http.Response, error) {
 func (d *Downloader) multiDownload() error {
 	// Calculate the segment size
 	d.resume = d.checkPartExist()
-	partSize := d.Size / int64(d.concurrency)
+	partSize := d.size / int64(d.concurrency)
 	startRange := int64(0)
 	wg := sync.WaitGroup{}
 
-	if d.ShowProgress {
-		d.bar = progressbar.DefaultBytes(d.Size, "Downloading...")
+	if d.showProgress {
+		d.bar = progressbar.DefaultBytes(d.size, "Downloading...")
 	} else {
-		d.bar = progressbar.DefaultBytesSilent(d.Size, "Downloading...")
+		d.bar = progressbar.DefaultBytesSilent(d.size, "Downloading...")
 	}
 
 	// Create a channel to receive errors from goroutines
@@ -246,7 +246,7 @@ func (d *Downloader) multiDownload() error {
 		download := int64(0)
 		if d.resume {
 			path := d.getPartFilename(i)
-			file, err := os.Open(fmt.Sprintf("%s/%s", d.RootPath, path))
+			file, err := os.Open(fmt.Sprintf("%s/%s", d.rootPath, path))
 			if err != nil {
 				return err
 			}
@@ -262,7 +262,7 @@ func (d *Downloader) multiDownload() error {
 		}
 
 		if i == d.concurrency {
-			go d.partialDownload(startRange+download, d.Size, i, &wg, errChan)
+			go d.partialDownload(startRange+download, d.size, i, &wg, errChan)
 		} else {
 			go d.partialDownload(startRange+download, startRange+partSize, i, &wg, errChan)
 		}
@@ -297,7 +297,10 @@ func (d *Downloader) partialDownload(start, end int64, partNumber int, wg *sync.
 		return
 	}
 
-	log.Println("Downloading part", partNumber)
+	if d.debug {
+		log.Println("Downloading part", partNumber)
+	}
+
 	request, err := d.makeRequestWithRange(start, end)
 
 	if err != nil {
@@ -313,7 +316,7 @@ func (d *Downloader) partialDownload(start, end int64, partNumber int, wg *sync.
 	}
 	defer resp.Body.Close()
 
-	outputPath := d.RootPath + "/" + d.getPartFilename(partNumber)
+	outputPath := d.rootPath + "/" + d.getPartFilename(partNumber)
 
 	flags := os.O_CREATE | os.O_WRONLY
 
@@ -332,7 +335,7 @@ func (d *Downloader) partialDownload(start, end int64, partNumber int, wg *sync.
 		case <-d.context.Done():
 			return
 		default:
-			_, err = io.CopyN(io.MultiWriter(f, d.bar), resp.Body, int64(d.CopyBufferSize))
+			_, err = io.CopyN(io.MultiWriter(f, d.bar), resp.Body, int64(d.copyBufferSize))
 			if err != nil {
 				if err == io.EOF {
 					return
@@ -351,12 +354,12 @@ func (d *Downloader) simpleDownload() error {
 }
 
 func (d *Downloader) getPartFilename(partNum int) string {
-	return d.Filename + ".part" + strconv.Itoa(partNum)
+	return d.filename + ".part" + strconv.Itoa(partNum)
 }
 
 func (d *Downloader) mergeParts() error {
 	// Create the output file
-	outputPath := d.RootPath + "/" + d.Filename
+	outputPath := d.rootPath + "/" + d.filename
 	destination, err := os.OpenFile(outputPath, os.O_CREATE|os.O_WRONLY, 0666)
 
 	if err != nil {
@@ -366,19 +369,57 @@ func (d *Downloader) mergeParts() error {
 
 	// Open each part file and copy to the destination file
 	for i := 0; i < d.concurrency; i++ {
-		partPath := d.RootPath + "/" + d.getPartFilename(i)
+		partPath := d.rootPath + "/" + d.getPartFilename(i)
 		part, err := os.OpenFile(partPath, os.O_RDONLY, 0666)
 		if err != nil {
 			return err
 		}
-		defer part.Close()
-
 		_, err = io.Copy(destination, part)
 		if err != nil {
 			return err
 		}
 		os.Remove(partPath)
+		defer part.Close()
 	}
 
 	return nil
+}
+
+func (d *Downloader) GetFileSize() int64 {
+	return d.size
+}
+
+func (d *Downloader) GetFilename() string {
+	return d.filename
+}
+func (d *Downloader) GetUrl() string {
+	return d.url
+}
+
+func (d *Downloader) SetUrl(url string) {
+	d.url = url
+}
+
+func (d *Downloader) SetHeader(header map[string]string) {
+	d.header = header
+}
+
+func (d *Downloader) SetConcurrency(concurrency int) {
+	d.concurrency = concurrency
+}
+
+func (d *Downloader) SetCopyBufferSize(size int) {
+	d.copyBufferSize = size
+}
+
+func (d *Downloader) SetRootPath(path string) {
+	d.rootPath = path
+}
+
+func (d *Downloader) SetShowProgress(show bool) {
+	d.showProgress = show
+}
+
+func (d *Downloader) GetPath() string {
+	return d.rootPath + "/" + d.filename
 }

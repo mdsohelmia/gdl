@@ -39,8 +39,9 @@ type SegmentDownloadInfo struct {
 func main() {
 	downloader := downloader.NewDownloader(&downloader.Config{
 		Url:          "https://storage.googleapis.com/muxdemofiles/mux-video-intro.mp4",
-		ShowProgress: true,
+		ShowProgress: false,
 		RootPath:     "downloads",
+		Debug:        false,
 	})
 	downloader.Hook = func(resp *http.Response, progressbar *progressbar.ProgressBar, err error) error {
 		if err != nil {
@@ -50,5 +51,8 @@ func main() {
 	}
 	downloader.SetBaseFolder(fmt.Sprintf("%d", time.Now().Unix()))
 	err := downloader.Download()
+	fmt.Println("Downloaded Size:", downloader.GetFileSize())
+	fmt.Println("Downloaded filename:", downloader.GetPath())
+	fmt.Println("Downloaded Path:", downloader.GetPath())
 	pp.Println(err)
 }
