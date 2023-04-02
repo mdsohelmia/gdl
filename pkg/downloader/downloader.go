@@ -51,7 +51,7 @@ type Downloader struct {
 // NewDownloader creates a new Downloader
 // with the given URL and file path.
 // The concurrency parameter specifies the number of threads
-func NewDownloader(config *Config) *Downloader {
+func NewDownloader(config *Config) (*Downloader, error) {
 	if config.Concurrency == 0 {
 		config.Concurrency = runtime.NumCPU()
 	}
@@ -94,7 +94,12 @@ func NewDownloader(config *Config) *Downloader {
 		showProgress:   config.ShowProgress,
 	}
 
-	return d
+	// fetch the metadata
+	if err := d.fetchMetadata(); err != nil {
+		return nil, err
+	}
+
+	return d, nil
 }
 
 func (d *Downloader) SetBaseFolder(folderName string) {
@@ -178,10 +183,7 @@ func (d *Downloader) Download() error {
 	}
 	// ensure the root path exists or create it.
 	d.ensureRootPath()
-	// fetch the metadata
-	if err := d.fetchMetadata(); err != nil {
-		return err
-	}
+
 	// if the file already exists, we rename it
 	if d.debug {
 		log.Println("filename", d.filename)
