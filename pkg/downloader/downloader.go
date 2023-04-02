@@ -21,6 +21,7 @@ import (
 
 // Downloader is the main struct
 type Downloader struct {
+	originUrl      string
 	filename       string
 	filePath       string
 	rootPath       string
@@ -142,6 +143,7 @@ func (d *Downloader) fetchMetadata() error {
 	if err := d.detectFilename(resp); err != nil {
 		return err
 	}
+	d.originUrl = resp.Request.URL.String()
 	return nil
 }
 
@@ -281,7 +283,7 @@ func (d *Downloader) multiDownload() error {
 	}
 
 	if !d.paused {
-		err := d.mergeParts()
+		err := d.merge()
 		if err != nil {
 			return err
 		}
@@ -350,6 +352,42 @@ func (d *Downloader) partialDownload(start, end int64, partNumber int, wg *sync.
 }
 
 func (d *Downloader) simpleDownload() error {
+	if d.resume {
+		return fmt.Errorf("resumable download is not supported for simple download")
+	}
+
+	request, err := d.makeRequest("GET")
+
+	if err != nil {
+		return err
+	}
+
+	resp, err := d.do(request)
+
+	if err != nil {
+		return err
+	}
+
+	defer resp.Body.Close()
+
+	f, err := os.OpenFile(d.rootPath+"/"+d.filename, os.O_CREATE|os.O_WRONLY, 0666)
+
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	d.bar = progressbar.DefaultBytes(d.size, "Downloading...")
+
+	// copy to output file
+	buffer := make([]byte, d.copyBufferSize)
+
+	_, err = io.CopyBuffer(io.MultiWriter(f, d.bar), resp.Body, buffer)
+
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -357,7 +395,7 @@ func (d *Downloader) getPartFilename(partNum int) string {
 	return d.filename + ".part" + strconv.Itoa(partNum)
 }
 
-func (d *Downloader) mergeParts() error {
+func (d *Downloader) merge() error {
 	// Create the output file
 	outputPath := d.rootPath + "/" + d.filename
 	destination, err := os.OpenFile(outputPath, os.O_CREATE|os.O_WRONLY, 0666)
@@ -422,4 +460,16 @@ func (d *Downloader) SetShowProgress(show bool) {
 
 func (d *Downloader) GetPath() string {
 	return d.rootPath + "/" + d.filename
+}
+
+func (d *Downloader) SetDebug(debug bool) {
+	d.debug = debug
+}
+
+func (d *Downloader) SetHook(hook Hook) {
+	d.Hook = hook
+}
+
+func (d *Downloader) GetOriginUrl() string {
+	return d.originUrl
 }
