@@ -172,6 +172,10 @@ func (d *Downloader) Download() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	d.context = ctx
 	d.cancel = cancel
+
+	if d.debug {
+		log.Println("Number of concurrency:", d.concurrency)
+	}
 	// ensure the root path exists or create it.
 	d.ensureRootPath()
 	// fetch the metadata
