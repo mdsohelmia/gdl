@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/go-retryablehttp"
+	"github.com/k0kubun/pp"
 	"github.com/schollz/progressbar/v3"
 	"github.com/stoewer/go-strcase"
 )
@@ -111,6 +112,12 @@ func (d *Downloader) checkPartExist() bool {
 	return err == nil
 }
 func (d *Downloader) checkFileExist() bool {
+	_, err := os.Stat(fmt.Sprintf("%s/%s", d.rootPath, d.filePath))
+	return err == nil
+}
+
+func (d *Downloader) AllReadyExist() bool {
+	pp.Println(fmt.Sprintf("%s/%s", d.rootPath, d.filePath))
 	_, err := os.Stat(fmt.Sprintf("%s/%s", d.rootPath, d.filePath))
 	return err == nil
 }
@@ -478,10 +485,4 @@ func (d *Downloader) SetHook(hook Hook) {
 
 func (d *Downloader) GetOriginUrl() string {
 	return d.originUrl
-}
-
-// IsExist check if the file is exist
-func (d *Downloader) AllReadyExist() bool {
-	_, err := os.Stat(d.GetPath())
-	return err == nil
 }

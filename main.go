@@ -20,6 +20,8 @@ func main() {
 	if err != nil {
 		return
 	}
+	downloader.SetBaseFolder("1680426182")
+	pp.Println(downloader.AllReadyExist())
 	if downloader.AllReadyExist() {
 		fmt.Println("Downloaded URL:", downloader.GetOriginUrl())
 		fmt.Println("Downloaded Size:", downloader.GetFileSize())
@@ -35,7 +37,7 @@ func main() {
 		}
 		return nil
 	}
-	downloader.SetBaseFolder("1680426182")
+
 	fmt.Println("Downloaded URL:", downloader.GetOriginUrl())
 	fmt.Println("Downloaded Size:", downloader.GetFileSize())
 	fmt.Println("Downloaded filename:", downloader.GetFilename())
