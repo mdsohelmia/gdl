@@ -479,3 +479,9 @@ func (d *Downloader) SetHook(hook Hook) {
 func (d *Downloader) GetOriginUrl() string {
 	return d.originUrl
 }
+
+// IsExist check if the file is exist
+func (d *Downloader) AllReadyExist() bool {
+	_, err := os.Stat(d.GetPath())
+	return err == nil
+}
