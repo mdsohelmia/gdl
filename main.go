@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"github.com/k0kubun/pp"
-	"github.com/mdsohelmia/gcdownloader/pkg/downloader"
+	"github.com/mdsohelmia/gdl/pkg/downloader"
 	"github.com/schollz/progressbar/v3"
 )
 
