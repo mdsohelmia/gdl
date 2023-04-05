@@ -11,7 +11,7 @@ import (
 
 func main() {
 	downloader, err := downloader.NewDownloader(&downloader.Config{
-		Url:            "https://storage.googleapis.com/muxdemofiles/mux-video-intro.mp4",
+		Url:            "https://player.vimeo.com/progressive_redirect/playback/807882959/rendition/1080p/file.mp4?loc=external&oauth2_token_id=1713368872&signature=5bebcb3d9493ba314027adeaa8bb2f85f753c13d6a96a0a7ad2426910dd1f6f6",
 		ShowProgress:   true,
 		RootPath:       "downloads",
 		Debug:          true,
@@ -21,7 +21,8 @@ func main() {
 		return
 	}
 	downloader.SetBaseFolder("1680426182")
-	pp.Println(downloader.AllReadyExist())
+	downloader.SetFilename("test gotipath.mp4")
+
 	if downloader.AllReadyExist() {
 		fmt.Println("Downloaded URL:", downloader.GetOriginUrl())
 		fmt.Println("Downloaded Size:", downloader.GetFileSize())

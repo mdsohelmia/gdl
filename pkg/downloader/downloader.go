@@ -103,6 +103,11 @@ func NewDownloader(config *Config) (*Downloader, error) {
 	return d, nil
 }
 
+// SetFilename sets the filename
+func (d *Downloader) SetFilename(filename string) {
+	d.filename = strcase.SnakeCase(filename)
+}
+
 func (d *Downloader) SetBaseFolder(folderName string) {
 	d.rootPath = fmt.Sprintf("%s/%s", d.rootPath, folderName)
 }
@@ -117,8 +122,7 @@ func (d *Downloader) checkFileExist() bool {
 }
 
 func (d *Downloader) AllReadyExist() bool {
-	pp.Println(fmt.Sprintf("%s/%s", d.rootPath, d.filePath))
-	_, err := os.Stat(fmt.Sprintf("%s/%s", d.rootPath, d.filePath))
+	_, err := os.Stat(d.GetPath())
 	return err == nil
 }
 
@@ -170,6 +174,9 @@ func (d *Downloader) Pause() {
 // DetectFilename detects the filename from the response
 func (d *Downloader) detectFilename(response *http.Response) error {
 	path := response.Request.URL.Path
+	pp.Println(response.Request.RequestURI)
+	pp.Println(response.Header)
+
 	tokens := strings.Split(path, "/")
 	if len(tokens) > 0 {
 		d.filename = strcase.SnakeCase(tokens[len(tokens)-1])
