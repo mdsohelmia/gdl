@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/hashicorp/go-retryablehttp"
-	"github.com/k0kubun/pp"
 	"github.com/schollz/progressbar/v3"
 	"github.com/stoewer/go-strcase"
 )
@@ -64,11 +63,11 @@ func NewDownloader(config *Config) (*Downloader, error) {
 		config.CopyBufferSize = 1024
 	}
 	if config.RetryMax == 0 {
-		config.RetryMax = 10
+		config.RetryMax = 15
 	}
 
 	if config.RetryWaitMax == 0 {
-		config.RetryWaitMax = 10 * time.Second
+		config.RetryWaitMax = 60 * time.Second
 	}
 
 	if config.RetryWaitMin == 0 {
@@ -79,6 +78,7 @@ func NewDownloader(config *Config) (*Downloader, error) {
 	retryablehttpClient.RetryMax = config.RetryMax
 	retryablehttpClient.RetryWaitMax = config.RetryWaitMax
 	retryablehttpClient.RetryWaitMin = config.RetryWaitMin
+
 	if config.Debug {
 		retryablehttpClient.Logger = log.New(os.Stdout, "", log.LstdFlags)
 	} else {
@@ -174,9 +174,6 @@ func (d *Downloader) Pause() {
 // DetectFilename detects the filename from the response
 func (d *Downloader) detectFilename(response *http.Response) error {
 	path := response.Request.URL.Path
-	pp.Println(response.Request.RequestURI)
-	pp.Println(response.Header)
-
 	tokens := strings.Split(path, "/")
 	if len(tokens) > 0 {
 		d.filename = strcase.SnakeCase(tokens[len(tokens)-1])
