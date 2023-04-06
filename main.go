@@ -2,50 +2,33 @@ package main
 
 import (
 	"fmt"
-	"net/http"
+	"os"
+	"time"
 
+	"github.com/inhies/go-bytesize"
 	"github.com/k0kubun/pp"
 	"github.com/mdsohelmia/gdl/pkg/downloader"
-	"github.com/schollz/progressbar/v3"
 )
 
 func main() {
-	downloader, err := downloader.NewDownloader(&downloader.Config{
-		Url:            "https://player.vimeo.com/progressive_redirect/playback/807882959/rendition/1080p/file.mp4?loc=external&oauth2_token_id=1713368872&signature=5bebcb3d9493ba314027adeaa8bb2f85f753c13d6a96a0a7ad2426910dd1f6f6",
-		ShowProgress:   true,
-		RootPath:       "downloads",
-		Debug:          true,
-		CopyBufferSize: 1024,
+	downloader := downloader.NewDownloader(&downloader.Config{
+		Url: "https://player.vimeo.com/progressive_redirect/playback/807879296/rendition/1080p/file.mp4?loc=external&oauth2_token_id=1713368872&signature=8c17d337ee5ddee975c67bc74405206ea18045d30620d558f4caa3b2dfb3dded",
 	})
+
+	// downloader.Hook = func(response *grab.Response) {
+	// 	fmt.Printf("transferred %v / %v bytes (%.2f%%)\n",
+	// 		response.BytesComplete(),
+	// 		response.Size,
+	// 		100*response.Progress())
+	// }
+
+	outputPath, err := downloader.Download(fmt.Sprintf("videos/%d.mp4", time.Now().Unix()))
+
 	if err != nil {
-		return
+		panic(err)
 	}
-	downloader.SetBaseFolder("1680426182")
-	downloader.SetFilename("test gotipath.mp4")
-
-	if downloader.AllReadyExist() {
-		fmt.Println("Downloaded URL:", downloader.GetOriginUrl())
-		fmt.Println("Downloaded Size:", downloader.GetFileSize())
-		fmt.Println("Downloaded filename:", downloader.GetFilename())
-		fmt.Println("Downloaded Path:", downloader.GetPath())
-		fmt.Println("Downloaded URL:", downloader.GetOriginUrl())
-		return
-	}
-
-	downloader.Hook = func(resp *http.Response, progressbar *progressbar.ProgressBar, err error) error {
-		if err != nil {
-			pp.Println(err)
-		}
-		return nil
-	}
-
-	fmt.Println("Downloaded URL:", downloader.GetOriginUrl())
-	fmt.Println("Downloaded Size:", downloader.GetFileSize())
-	fmt.Println("Downloaded filename:", downloader.GetFilename())
-	fmt.Println("Downloaded Path:", downloader.GetPath())
-	fmt.Println("Downloaded URL:", downloader.GetOriginUrl())
-
-	err = downloader.Download()
-
-	pp.Println(err)
+	pp.Println("Downloaded file size: ", bytesize.New(float64(downloader.Size)).String())
+	pp.Println(outputPath)
+	fileInfo, _ := os.Stat(outputPath)
+	fmt.Println("Save file", bytesize.New(float64(fileInfo.Size())).String())
 }

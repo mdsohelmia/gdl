@@ -23,3 +23,6 @@ go.work
 vendor/
 # Video Download files
 downloads/
+myvideo.mp4
+videos/
+3499936051.mp4

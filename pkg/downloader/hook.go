@@ -1,9 +1,7 @@
 package downloader
 
 import (
-	"net/http"
-
-	"github.com/schollz/progressbar/v3"
+	"github.com/cavaliergopher/grab/v3"
 )
 
-type Hook func(resp *http.Response, progressbar *progressbar.ProgressBar, err error) error
+type Hook func(response *grab.Response)
